@@ -1,0 +1,59 @@
+# System under test: InvoiceShelf (pinned) + MariaDB.
+# Version is pinned on purpose: tests must not break because upstream pushed a new "latest".
+name: invoiceshelf-qa
+
+services:
+  database:
+    image: mariadb:10.11
+    environment:
+      MARIADB_DATABASE: invoiceshelf
+      MARIADB_USER: invoiceshelf
+      MARIADB_PASSWORD: ${DB_PASSWORD:-invoiceshelf}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    ports:
+      # Exposed to the host only for DB-level assertions in tests.
+      - "${DB_PORT:-3307}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    image: invoiceshelf/invoiceshelf:${INVOICESHELF_VERSION:-2.4.6}
+    environment:
+      APP_NAME: InvoiceShelf
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${APP_PORT:-8090}
+      DB_CONNECTION: mariadb
+      DB_HOST: database
+      DB_PORT: 3306
+      DB_DATABASE: invoiceshelf
+      DB_USERNAME: invoiceshelf
+      DB_PASSWORD: ${DB_PASSWORD:-invoiceshelf}
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      SESSION_LIFETIME: 240
+      SESSION_DOMAIN: localhost
+      SANCTUM_STATEFUL_DOMAINS: localhost:${APP_PORT:-8090}
+      # nginx listens on IPv4 only: some CI runners/VMs have IPv6 disabled and nginx then fails to start.
+      NGINX_LISTEN_IP_PROTOCOL: ipv4
+    ports:
+      - "${APP_PORT:-8090}:8080"
+    volumes:
+      - app_storage:/var/www/html/storage
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  db_data:
+  app_storage:
