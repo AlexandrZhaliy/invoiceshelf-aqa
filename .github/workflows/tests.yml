@@ -1,1 +1,94 @@
-python-version: "3.13"
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch cancels the older run: no point finishing stale results.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start system under test (InvoiceShelf + MariaDB)
+        # --wait blocks until both healthchecks pass, so the next step never hits a half-started app
+        run: docker compose up -d --wait
+
+      - name: Complete the install wizard
+        run: python scripts/bootstrap_app.py
+
+      - name: Run tests
+        run: pytest
+
+      # Everything below runs even when tests fail: that is exactly when we need the evidence.
+      - name: Generate Allure report
+        if: always()
+        run: |
+          npm install --global allure-commandline
+          allure generate allure-results --clean -o allure-report
+
+      - name: Upload Allure report (downloadable artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+          retention-days: 14
+
+      # Pages gets the report only from main: a PR must not overwrite the public report.
+      - name: Package report for GitHub Pages
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
+      - name: Collect container logs
+        if: failure()
+        run: docker compose logs --no-color > docker-logs.txt
+
+      - name: Upload container logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs
+          path: docker-logs.txt
+          retention-days: 14
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  publish-report:
+    # Runs after the tests, pass or fail: a red run's report is the one people want to open.
+    needs: api-tests
+    if: always() && github.ref == 'refs/heads/main' && needs.api-tests.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
