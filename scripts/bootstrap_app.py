@@ -118,11 +118,13 @@ def run() -> None:
         "account",
     )
 
-    # Step 7: company
+    # Step 7: company. Country is looked up by ISO code: numeric ids are internal and may change
+    countries = check(s.get(f"{settings.base_url}/api/v1/countries", timeout=10), "countries list")
+    country_id = next(c["id"] for c in countries["data"] if c["code"] == settings.country_code)
     check(
         s.put(
             f"{settings.base_url}/api/v1/company",
-            json={"name": settings.company_name, "address": {"country_id": 176}},  # 176 = Portugal
+            json={"name": settings.company_name, "address": {"country_id": country_id}},
             timeout=10,
         ),
         "company",
@@ -130,16 +132,16 @@ def run() -> None:
 
     # Step 8: preferences. Currency is looked up by code instead of a hardcoded id
     currencies = check(s.get(f"{settings.base_url}/api/v1/currencies", timeout=10), "currencies list")
-    eur_id = next(c["id"] for c in currencies["data"] if c["code"] == "EUR")
+    currency_id = next(c["id"] for c in currencies["data"] if c["code"] == settings.currency_code)
     check(
         s.post(
             f"{settings.base_url}/api/v1/company/settings",
             json={
                 "settings": {
-                    "currency": eur_id,
+                    "currency": currency_id,
                     "language": "en",
                     "carbon_date_format": "Y-m-d",
-                    "time_zone": "UTC",
+                    "time_zone": settings.time_zone,
                     "fiscal_year": "1-12",
                 }
             },

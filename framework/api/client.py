@@ -12,7 +12,7 @@ from framework.config import settings
 
 
 class ApiClient:
-    def __init__(self, base_url: str = settings.base_url, token: str | None = None) -> None:
+    def __init__(self, base_url: str = settings.base_url, token: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
@@ -20,7 +20,7 @@ class ApiClient:
             self.set_token(token)
 
     # ======================== auth ============================
-    def set_token(self, token: str) -> None:
+    def set_token(self, token: str):
         self.session.headers["Authorization"] = f"Bearer {token}"
 
     def login(self, email: str, password: str, device_name: str = "pytest") -> requests.Response:
@@ -70,6 +70,7 @@ def _pretty(body: Any) -> str:
         except ValueError:
             return body[:5000]
     return json.dumps(body, indent=2, ensure_ascii=False)[:5000]
+
 
 def _mask(text: str) -> str:
     """Never leak passwords into reports."""
