@@ -3,7 +3,6 @@ It knows the base URL, auth header and timeouts, and logs every call to Allure
 It does NOT assert anything — assertions live in tests, so a test reads as the check it makes
 """
 
-from __future__ import annotations
 import json
 from typing import Any
 import allure
