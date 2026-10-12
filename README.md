@@ -22,7 +22,7 @@ This repository contains only tests. It does not copy any InvoiceShelf code and 
 
 ## Quick start
 
-Requirements: Docker with Compose, Python 3.13.
+Requirements: Docker with Compose, Python 3.13+.
 
 ```bash
 # 1. Start the application and its database, wait until both are healthy
@@ -57,14 +57,19 @@ The company currency cannot be changed once transactions exist, so after changin
 ```
 docker-compose.yml        System under test: InvoiceShelf + MariaDB, with healthchecks
 scripts/bootstrap_app.py  Completes the install wizard through its API (idempotent)
+docs/invoiceshelf.postman_collection.json  Ready-to-run Postman requests the tests make (run Login first)
 framework/
   config.py               Single source of configuration (env variables, defaults for local run)
   api/client.py           HTTP client: base URL, auth header, timeouts, Allure attachments
-  api/customers.py        One wrapper per API area: a method per call, returns the raw response
+  api/customers.py        One wrapper per API area (customers, invoices, payments, reference data):
+  api/invoices.py         a method per call, returns the raw response
+  api/users.py, roles.py  Users and roles, used to build a restricted user for access tests
+  db.py                   Read-only SQL access (PyMySQL) for DB checks
   data/factories.py       Test data builders, every call returns unique data
 tests/
   conftest.py             Fixtures: readiness check, admin token, API clients, test entities
   api/                    API tests
+  db/                     Tests that compare stored data with what the API reports
 .github/workflows/        CI: start the app, bootstrap, run tests, publish the Allure report
 ```
 
@@ -75,10 +80,10 @@ tests/
 | Smoke | The application is alive and an admin can log in | Done |
 | API: auth | Wrong credentials, access without a token | Done |
 | API: customers | Create and read back, duplicate email, delete | Done |
-| API: invoices | Totals, validation errors, status transitions | _Planned_ |
-| API: payments | Full and partial payment | _Planned_ |
-| API: access control | Restricted role gets 403 | _Planned_ |
-| DB | Stored data matches what the API reports | _Planned_ |
+| API: invoices | Totals calculated by the server, validation errors, duplicate number, status transition | Done |
+| API: payments | Full and partial payment change paid status and amount due | Done |
+| API: access control | A user whose role does not allow invoices gets 403 on the list and on a direct read by id | Done |
+| DB | The invoice row in MariaDB matches what the API reports | Done |
 | UI (Playwright) | Login, create a customer, create an invoice through the form, record a payment | _Planned_ |
 | E2E | Data prepared through the API, action in the UI, result verified through the API | _Planned_ |
 
@@ -94,6 +99,7 @@ Principles:
 - **The API client asserts nothing.** It sends requests, logs them to Allure and returns the response. Assertions live in tests, so every test reads as the check it makes. Wrappers per API area (`CustomersApi`) hold paths and payload shapes, so a change in the API is fixed in one place.
 - **Fixture scopes.** The admin token is created once per run (`session`): logging in before every test is slow and adds nothing. Clients and test entities are created per test (`function`), because a test may change them.
 - **The install wizard is automated through its API**, not through the UI: it is faster and does not depend on markup. See `scripts/bootstrap_app.py` for the details that are not obvious (the image runs migrations on start, so the wizard needs `database_overwrite`; the final steps are order-sensitive).
+- **Money is in minor units.** The API works with integers (5000 = 50.00), so tests compare exact integers and never floats.
 - **Secrets are never hard-coded in tests.** Configuration comes from the environment; passwords are masked in Allure attachments.
 
 ## CI
@@ -112,11 +118,15 @@ GitHub Actions (`.github/workflows/tests.yml`) on every push to `main` and on pu
 Notes made while building the framework.
 
 - For a non-existent resource the API answers `404` but the response body contains a full stack trace with server file paths. This happens because the test environment runs with `APP_DEBUG=true`; with debug off, such a response should not be returned. Worth keeping in mind when checking a production configuration.
+- IDs of invoices and other entities are sequential integers issued by the application, so a neighbouring id is easy to guess. This is why `tests/api/test_access.py` checks that reading an invoice by id without the permission is refused. Not covered: access between two separate companies.
+- InvoiceShelf has no API documentation. `docs/invoiceshelf.postman_collection.json` is a Postman collection with the 19 requests the tests make (endpoints and example bodies, built from the application's routes and validation rules); response schemas are not described. It is a snapshot for version 2.4.6 and does not update itself.
 - The install wizard refuses a fresh container with `database_should_be_empty`, because the Docker image runs migrations on start.
 
 ## How AI was used
 
-_Planned: to be written at the end of the project, from what actually happened._
+_Work in progress: the full section is written at the end of the project, from what actually happened. Entries so far:_
+
+- **API reference.** InvoiceShelf ships no API documentation, so Claude read the application's routes and validation rules and built a Postman collection of the requests the tests make. I imported it into Postman and used it to follow the API while building the tests framework. Running the collection end to end also exposed a real bug in our own test cleanup: users were deleted with the wrong field name, so test users were left behind. The cleanup now checks the response status.
 
 ## License
 
