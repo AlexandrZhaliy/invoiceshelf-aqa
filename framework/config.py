@@ -3,7 +3,6 @@ Normally values come from .env file.
 Defaults match docker-compose.yml, so `docker compose up` + `pytest` works with zero setup.CI overrides via env
 """
 
-from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from dotenv import load_dotenv

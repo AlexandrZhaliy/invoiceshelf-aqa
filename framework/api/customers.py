@@ -1,6 +1,5 @@
 """Customers endpoint wrapper: one method per API call, returns the raw response, asserts nothing."""
 
-from __future__ import annotations
 import requests
 from framework.api.client import ApiClient
 

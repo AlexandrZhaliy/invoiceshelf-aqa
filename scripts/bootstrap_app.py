@@ -6,7 +6,6 @@ Idempotent: on an already-installed app it detects that and exits 0
 Usage:  python scripts/bootstrap_app.py
 """
 
-from __future__ import annotations
 import sys
 import time
 from pathlib import Path
@@ -51,6 +50,7 @@ def check(resp: requests.Response, step: str) -> dict:
     log(f"ok: {step}")
     return body
 
+
 def run() -> None:
     s = requests.Session()
     s.headers.update({"Accept": "application/json"})
@@ -59,6 +59,9 @@ def run() -> None:
     if is_installed(s):
         log("already installed, nothing to do")
         return
+
+    # Step numbers follow the UI install wizard (0-8). Steps 1, 2 (requirements, permissions)
+    # and 5 (mail) are skipped: they are informational or optional for our setup.
 
     # Step 0: language
     check(s.post(f"{INSTALL}/wizard-language", json={"profile_language": "en"}, timeout=10), "language")
@@ -118,7 +121,9 @@ def run() -> None:
         "account",
     )
 
-    # Step 7: company. Country is looked up by ISO code: numeric ids are internal and may change
+    # Step 7: company. It already exists: the seeder created it during step 3 (migrate --seed),
+    # so this call only fills it in (name, country) and does not create a new one.
+    # Country is looked up by ISO code: numeric ids are internal and may change
     countries = check(s.get(f"{settings.base_url}/api/v1/countries", timeout=10), "countries list")
     country_id = next(c["id"] for c in countries["data"] if c["code"] == settings.country_code)
     check(
