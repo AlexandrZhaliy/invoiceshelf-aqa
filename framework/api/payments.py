@@ -11,6 +11,9 @@ class PaymentsApi:
     def create(self, payload: dict) -> requests.Response:
         return self.client.post("/api/v1/payments", json=payload)
 
+    def list_payments_by_customer(self, customer_id: int) -> requests.Response:
+        return self.client.get("/api/v1/payments", params={"customer_id": customer_id})
+
     def delete(self, payment_id: int) -> requests.Response:
         # Used only for test cleanup. Hard delete is a product feature, see Observations in README
         # Bulk endpoint: POST /payments/delete {"ids": [...]}
