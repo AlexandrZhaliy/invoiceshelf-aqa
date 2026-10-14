@@ -40,6 +40,10 @@
       "value": ""
     },
     {
+      "key": "item_id",
+      "value": ""
+    },
+    {
       "key": "payment_id",
       "value": ""
     },
@@ -310,6 +314,57 @@
       ]
     },
     {
+      "name": "Items (catalog)",
+      "item": [
+        {
+          "name": "Create catalog item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Catalog Item {{$timestamp}}\",\n  \"price\": 5000,\n  \"description\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A product in the catalog, which the invoice form offers in its Items list. Price in minor units: 5000 = 50.00."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"item_id\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Invoices",
       "item": [
         {
@@ -485,6 +540,33 @@
               }
             }
           ]
+        },
+        {
+          "name": "List payments by customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments?customer_id={{customer_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "customer_id",
+                  "value": "{{customer_id}}"
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -741,6 +823,41 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"ids\": [{{customer_id}}]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete catalog item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/items/delete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "items",
+                "delete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [{{item_id}}]\n}",
               "options": {
                 "raw": {
                   "language": "json"

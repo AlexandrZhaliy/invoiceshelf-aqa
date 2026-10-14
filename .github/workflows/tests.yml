@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install Chromium for the UI tests
+        run: playwright install --with-deps chromium
+
       - name: Start system under test (InvoiceShelf + MariaDB)
         # --wait blocks until both healthchecks pass, so the next step never hits a half-started app
         run: docker compose up -d --wait

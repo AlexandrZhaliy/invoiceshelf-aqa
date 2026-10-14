@@ -30,6 +30,7 @@ docker compose up -d --wait
 
 # 2. Install dependencies and complete the install wizard through the API
 pip install -r requirements.txt
+playwright install chromium   # browser for the UI tests
 python scripts/bootstrap_app.py
 
 # 3. Run the tests
@@ -64,12 +65,16 @@ framework/
   api/customers.py        One wrapper per API area (customers, invoices, payments, reference data):
   api/invoices.py         a method per call, returns the raw response
   api/users.py, roles.py  Users and roles, used to build a restricted user for access tests
+  api/catalog_items.py    Catalog items: products the invoice form offers (not the items inside an invoice)
+  ui/                     Page objects (login, customer, invoice, payment): they act, the tests assert
   db.py                   Read-only SQL access (PyMySQL) for DB checks
   data/factories.py       Test data builders, every call returns unique data
 tests/
   conftest.py             Fixtures: readiness check, admin token, API clients, test entities
   api/                    API tests
   db/                     Tests that compare stored data with what the API reports
+  ui/                     Browser tests (Playwright): one test per screen, data prepared through the API
+  e2e/                    Invoice created and paid through the UI, result checked through the API and the DB
 .github/workflows/        CI: start the app, bootstrap, run tests, publish the Allure report
 ```
 
@@ -84,8 +89,8 @@ tests/
 | API: payments | Full and partial payment change paid status and amount due | Done |
 | API: access control | A user whose role does not allow invoices gets 403 on the list and on a direct read by id | Done |
 | DB | The invoice row in MariaDB matches what the API reports | Done |
-| UI (Playwright) | Login, create a customer, create an invoice through the form, record a payment | _Planned_ |
-| E2E | Data prepared through the API, action in the UI, result verified through the API | _Planned_ |
+| UI (Playwright) | Login, create a customer, create an invoice through the form, record a payment | Done |
+| E2E | Data prepared through the API, action in the UI, result verified through the API | Done |
 
 Principles:
 
@@ -119,7 +124,8 @@ Notes made while building the framework.
 
 - For a non-existent resource the API answers `404` but the response body contains a full stack trace with server file paths. This happens because the test environment runs with `APP_DEBUG=true`; with debug off, such a response should not be returned. Worth keeping in mind when checking a production configuration.
 - IDs of invoices and other entities are sequential integers issued by the application, so a neighbouring id is easy to guess. This is why `tests/api/test_access.py` checks that reading an invoice by id without the permission is refused. Not covered: access between two separate companies.
-- InvoiceShelf has no API documentation. `docs/invoiceshelf.postman_collection.json` is a Postman collection with the 19 requests the tests make (endpoints and example bodies, built from the application's routes and validation rules); response schemas are not described. It is a snapshot for version 2.4.6 and does not update itself.
+- InvoiceShelf has no API documentation. `docs/invoiceshelf.postman_collection.json` is a Postman collection with the 22 requests the tests make (endpoints and example bodies, built from the application's routes and validation rules); response schemas are not described. It is a snapshot for version 2.4.6 and does not update itself.
+- The application limits every user to 180 API requests per minute (hard-coded, not configurable). Above that it answers `429` and the web interface silently hangs on an empty list or a skeleton screen. The browser and the API token have separate counters. One full test run uses less than half of the browser's limit, but two runs in a row can exhaust it. So before each UI test `wait_for_rate_limit` (`tests/conftest.py`) checks how many requests the browser has left and waits if fewer than 100 remain (a UI test uses up to about 40). If the limit does not recover in 75 seconds, the test fails with a clear message instead of hanging on an empty page.
 - The install wizard refuses a fresh container with `database_should_be_empty`, because the Docker image runs migrations on start.
 
 ## How AI was used
