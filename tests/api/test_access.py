@@ -1,4 +1,4 @@
-"""Access control: a user whose role only allows viewing items must not get at company data.
+"""Access control: a user whose role only allows viewing catalog items must not get at company data.
 Invoice ids are sequential integers issued by the application, so a neighbouring id is easy to guess.
 The tests below check that guessing an id gives nothing without the correct permission
 """

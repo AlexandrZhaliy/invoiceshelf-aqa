@@ -10,7 +10,7 @@ pytestmark = [pytest.mark.api]
 @allure.feature("Invoices")
 class TestInvoices:
     def test_totals_are_calculated_from_items(self, invoices_api, invoice):
-        """The invoice fixture has 1 x 5000 + 2 x 2500 lines."""
+        """The invoice fixture has 1 x 5000 + 2 x 2500 items."""
         body = invoices_api.get(invoice["id"]).json()["data"]
 
         assert body["sub_total"] == 10000
@@ -21,7 +21,7 @@ class TestInvoices:
         assert body["paid_status"] == "UNPAID"
 
     def test_server_ignores_total_sent_by_client(self, invoices_api, customer):
-        payload = invoice_payload(customer["id"], total=1)  # the lines say 10000
+        payload = invoice_payload(customer["id"], total=1)  # the items say 10000
         response = invoices_api.create(payload)
         assert response.status_code == 200
 

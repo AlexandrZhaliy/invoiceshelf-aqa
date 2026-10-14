@@ -17,12 +17,19 @@ from framework.api.users import UsersApi
 from framework.config import settings
 from framework.db import Database
 from framework.data.factories import (
+    catalog_item_payload,
     customer_payload,
     invoice_payload,
     payment_payload,
     role_payload,
     user_payload,
 )
+import time
+import allure
+from framework.api.catalog_items import CatalogItemsApi
+from framework.ui.login_page import LoginPage
+from playwright.sync_api import Browser, BrowserContext
+
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -106,7 +113,7 @@ def customer(customers_api: CustomersApi, company_currency_id: int):
 
 @pytest.fixture
 def invoice(invoices_api: InvoicesApi, customer: dict):
-    """A draft invoice with two lines (1 x 50.00 + 2 x 25.00 = 100.00, i.e. 10000 minor units)"""
+    """A draft invoice with two items (1 x 50.00 + 2 x 25.00 = 100.00, i.e. 10000 minor units)"""
     response = invoices_api.create(invoice_payload(customer["id"]))
     assert response.status_code == 200, f"Fixture could not create invoice: {response.text}"
     created = response.json()["data"]
@@ -133,7 +140,7 @@ def make_payment(payments_api: PaymentsApi, customer: dict, payment_method_id: i
 
 @pytest.fixture
 def limited_api(admin_api: ApiClient) -> ApiClient:
-    """Client logged in as a user whose role only allows viewing items. User and role are removed afterwards."""
+    """Client logged in as a user whose role only allows viewing catalog items. User and role are removed afterwards."""
     users, roles = UsersApi(admin_api), RolesApi(admin_api)
 
     role = roles.create(role_payload())
@@ -155,3 +162,82 @@ def limited_api(admin_api: ApiClient) -> ApiClient:
     # Cleanup results are checked: a silently failing delete would leave users and roles behind.
     assert users.delete(user_id).status_code == 200
     assert roles.delete(role_data["id"]).status_code == 200
+
+@pytest.fixture
+def catalog_items_api(admin_api: ApiClient) -> CatalogItemsApi:
+    return CatalogItemsApi(admin_api)
+
+@pytest.fixture
+def catalog_item(catalog_items_api: CatalogItemsApi):
+    """An item of the product catalog (price 50.00), which the invoice form offers in its Items list"""
+    response = catalog_items_api.create(catalog_item_payload())
+    assert response.status_code == 200, f"Fixture could not create item: {response.text}"
+    created = response.json()["data"]
+
+    yield created
+
+    catalog_items_api.delete(created["id"])
+
+
+@pytest.fixture
+def cleanup():
+    """For what a UI test creates: register a delete call as soon as the id is known, it runs after the test
+    (last registered first, so a payment goes before its invoice and the invoice before it's customer)"""
+    actions = []
+    yield actions.append
+    for action in reversed(actions):
+        action()
+
+
+# ========================= UI =============================
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Keep the result of each phase on the test item, so fixtures can see after the test whether it failed."""
+    outcome = yield
+    setattr(item, f"rep_{call.when}", outcome.get_result())
+
+@pytest.fixture(scope="session")
+def base_url() -> str:
+    """pytest-playwright resolves page.goto("/login") against this."""
+    return settings.base_url
+
+@pytest.fixture(scope="session")
+def admin_storage_state(browser: Browser, base_url: str) -> dict:
+    """Log in once per run through the real form and keep the session cookies, so UI tests that are not
+    about logging in start already authorised."""
+    context = browser.new_context(base_url=base_url)
+    page = context.new_page()
+    login = LoginPage(page)
+    login.open()
+    login.log_in(settings.admin_email, settings.admin_password)
+    page.wait_for_url("**/admin/dashboard")
+    state = context.storage_state()
+    context.close()
+    return state
+
+def wait_for_rate_limit(context: BrowserContext, base_url: str) -> None:
+    """The app allows 180 requests/min per user (HTTP 429 above that) and just hangs when it hits it.
+    A UI test makes dozens of requests within the single page, so wait until enough of the quota is left.
+    The browser session has its own counter, separate from the API token's, so ask through the browser context."""
+    for _ in range(15):
+        # Referer makes the app treat the call as coming from its own page (session cookies), like the browser does
+        response = context.request.get("/api/v1/me", headers={"Referer": base_url})
+        if int(response.headers.get("x-ratelimit-remaining", 180)) >= 100:
+            return
+        time.sleep(5)
+    pytest.fail("API rate limit did not recover in 75 s, a UI test would hang on HTTP 429")
+
+
+@pytest.fixture
+def admin_page(browser: Browser, base_url: str, admin_storage_state: dict, request: pytest.FixtureRequest):
+    """A browser page logged in as the admin. A screenshot goes to the Allure report if the test fails."""
+    context = browser.new_context(base_url=base_url, storage_state=admin_storage_state)
+    wait_for_rate_limit(context, base_url)
+    page = context.new_page()
+
+    yield page
+
+    report = getattr(request.node, "rep_call", None)
+    if report is not None and report.failed:
+        allure.attach(page.screenshot(), name="screenshot on failure", attachment_type=allure.attachment_type.PNG)
+    context.close()
